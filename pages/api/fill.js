@@ -12,23 +12,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Tải ảnh pattern và rập
+    // Tải ảnh
     const [patternRes, rapRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Lấy metadata từ ảnh rập
-    const rapImage = sharp(rapRes.data).ensureAlpha();
-    const metadata = await rapImage.metadata();
+    // Resize ảnh rập trước để tránh tràn RAM
+    const MAX_WIDTH = 2000;
+    const rapBuffer = await sharp(rapRes.data)
+      .ensureAlpha()
+      .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+      .toBuffer();
 
-    // Resize pattern thành tile nhỏ 200x200
+    const metadata = await sharp(rapBuffer).metadata();
+
+    // Resize pattern tile
+    const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
-      .resize(200, 200)
+      .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // Tạo nền trắng để lát pattern
+    // Tạo nền pattern bằng cách lặp tile
     const base = sharp({
       create: {
         width: metadata.width,
@@ -38,34 +44,41 @@ export default async function handler(req, res) {
       }
     });
 
-    // Lặp tile để phủ kín ảnh rập
     const compositeArray = [];
-    for (let y = 0; y < metadata.height; y += 200) {
-      for (let x = 0; x < metadata.width; x += 200) {
+    for (let y = 0; y < metadata.height; y += tileSize) {
+      for (let x = 0; x < metadata.width; x += tileSize) {
         compositeArray.push({ input: patternTile, top: y, left: x });
       }
     }
 
-    // Lát pattern
     const patternFilled = await base
       .composite(compositeArray)
       .png()
       .toBuffer();
 
-    // ⚠️ FIX lỗi VipsImage: file has been truncated bằng cách convert buffer ảnh rập trước
-    const rapBuffer = await sharp(rapRes.data)
+    // ⚠️ Convert ảnh rập thành mask alpha (trắng → trong suốt, đen → giữ lại)
+    const rapMask = await sharp(rapBuffer)
       .ensureAlpha()
+      .removeAlpha()
+      .threshold(200) // biến nền trắng thành trắng tuyệt đối
+      .toColourspace('b-w')
       .toBuffer();
 
-    // Overlay ảnh rập lên pattern
-    const output = await sharp(patternFilled)
-      .composite([{ input: rapBuffer, blend: 'over' }])
+    // Áp mask để chỉ giữ phần pattern nằm trong vùng rập
+    const masked = await sharp(patternFilled)
+      .ensureAlpha()
+      .composite([
+        {
+          input: rapMask,
+          blend: 'dest-in' // chỉ giữ vùng giao với mask
+        }
+      ])
       .png()
       .toBuffer();
 
-    // Trả về base64
+    // Trả về ảnh kết quả
     res.status(200).json({
-      image_base64: output.toString('base64')
+      image_base64: masked.toString('base64')
     });
 
   } catch (err) {
