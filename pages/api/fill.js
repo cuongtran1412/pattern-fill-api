@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
     const metadata = await sharp(rapResized).metadata();
 
-    // Tạo pattern nền
+    // Fill pattern
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
@@ -50,24 +50,21 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // ✅ Tạo mask chính xác từ ảnh rập (đen giữ lại, trắng loại)
-    const rapGray = await sharp(rapResized)
+    // ⛔ CHỐT: Tạo alpha mask từ rập bằng cách giữ pixel KHÁC trắng
+    const alphaMask = await sharp(rapResized)
       .removeAlpha()
-      .greyscale()
+      .ensureAlpha()
+      .threshold(254) // chỉ pixel trắng mới bị bỏ
+      .toColourspace('b-w') // thành mask đen trắng
       .toBuffer();
 
-    const masked = await sharp(patternFilled)
-      .composite([
-        {
-          input: rapGray,
-          blend: 'dest-in' // giữ lại vùng tối → đúng vùng rập
-        }
-      ])
+    const maskedPattern = await sharp(patternFilled)
+      .composite([{ input: alphaMask, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // ✅ Overlay lại rập line art lên (multiply để giữ viền đen)
-    const final = await sharp(masked)
+    // ✅ Cuối cùng: overlay viền rập lên (multiply giữ line đen)
+    const final = await sharp(maskedPattern)
       .composite([{ input: rapResized, blend: 'multiply' }])
       .png()
       .toBuffer();
