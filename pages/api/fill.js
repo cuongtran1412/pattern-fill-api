@@ -13,8 +13,8 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
+    // Resize rập
     const MAX_WIDTH = 2000;
-
     const rapResized = await sharp(rapRes.data)
       .resize({ width: MAX_WIDTH, withoutEnlargement: true })
       .ensureAlpha()
@@ -22,6 +22,7 @@ export default async function handler(req, res) {
 
     const metadata = await sharp(rapResized).metadata();
 
+    // Tạo pattern nền
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
@@ -49,35 +50,34 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 🧠 Tạo mask từ rập (trắng thành trong suốt)
-    const rapMask = await sharp(rapResized)
+    // ✅ Tạo mask chính xác từ ảnh rập (đen giữ lại, trắng loại)
+    const rapGray = await sharp(rapResized)
       .removeAlpha()
-      .threshold(220) // nền trắng thành trắng tuyệt đối
-      .toColourspace('b-w')
+      .greyscale()
       .toBuffer();
 
-    // ⚙️ Cắt pattern theo mask
-    const maskedPattern = await sharp(patternFilled)
+    const masked = await sharp(patternFilled)
       .composite([
-        { input: rapMask, blend: 'dest-in' } // giữ lại vùng có mask
+        {
+          input: rapGray,
+          blend: 'dest-in' // giữ lại vùng tối → đúng vùng rập
+        }
       ])
       .png()
       .toBuffer();
 
-    // 💥 Overlay lại rập lên trên (giữ line art)
-    const finalOutput = await sharp(maskedPattern)
-      .composite([
-        { input: rapResized, blend: 'multiply' }
-      ])
+    // ✅ Overlay lại rập line art lên (multiply để giữ viền đen)
+    const final = await sharp(masked)
+      .composite([{ input: rapResized, blend: 'multiply' }])
       .png()
       .toBuffer();
 
     res.status(200).json({
-      image_base64: finalOutput.toString('base64')
+      image_base64: final.toString('base64')
     });
 
   } catch (err) {
-    console.error("❌ ERROR:", err);
+    console.error('❌ ERROR:', err);
     res.status(500).send('Processing error');
   }
 }
