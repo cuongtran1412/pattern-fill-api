@@ -4,25 +4,25 @@ import axios from 'axios';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  const { pattern_url, rap_url } = req.body;
-  if (!pattern_url || !rap_url) return res.status(400).send('Missing URLs');
+  const { pattern_url, mask_url, outline_url } = req.body;
+  if (!pattern_url || !mask_url) {
+    return res.status(400).send('Missing pattern_url or mask_url');
+  }
 
   try {
-    const [patternRes, rapRes] = await Promise.all([
+    const [patternRes, maskRes, outlineRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
-      axios.get(rap_url, { responseType: 'arraybuffer' })
+      axios.get(mask_url, { responseType: 'arraybuffer' }),
+      outline_url
+        ? axios.get(outline_url, { responseType: 'arraybuffer' })
+        : Promise.resolve(null)
     ]);
 
-    // Resize rập
-    const MAX_WIDTH = 2000;
-    const rapResized = await sharp(rapRes.data)
-      .resize({ width: MAX_WIDTH, withoutEnlargement: true })
-      .ensureAlpha()
-      .toBuffer();
+    // Lấy metadata từ mask
+    const maskImage = await sharp(maskRes.data).ensureAlpha();
+    const metadata = await maskImage.metadata();
 
-    const metadata = await sharp(rapResized).metadata();
-
-    // Fill pattern
+    // Tạo pattern tiled theo kích thước mask
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
@@ -50,24 +50,25 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // ⛔ CHỐT: Tạo alpha mask từ rập bằng cách giữ pixel KHÁC trắng
-    const alphaMask = await sharp(rapResized)
-      .removeAlpha()
-      .ensureAlpha()
-      .threshold(254) // chỉ pixel trắng mới bị bỏ
-      .toColourspace('b-w') // thành mask đen trắng
-      .toBuffer();
-
-    const maskedPattern = await sharp(patternFilled)
-      .composite([{ input: alphaMask, blend: 'dest-in' }])
+    // Áp mask trắng-đen
+    const masked = await sharp(patternFilled)
+      .composite([
+        { input: maskRes.data, blend: 'dest-in' }
+      ])
       .png()
       .toBuffer();
 
-    // ✅ Cuối cùng: overlay viền rập lên (multiply giữ line đen)
-    const final = await sharp(maskedPattern)
-      .composite([{ input: rapResized, blend: 'multiply' }])
-      .png()
-      .toBuffer();
+    let final = masked;
+
+    // Nếu có outline → overlay thêm viền rập
+    if (outlineRes) {
+      final = await sharp(masked)
+        .composite([
+          { input: outlineRes.data, blend: 'multiply' }
+        ])
+        .png()
+        .toBuffer();
+    }
 
     res.status(200).json({
       image_base64: final.toString('base64')
