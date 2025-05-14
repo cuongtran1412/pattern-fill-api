@@ -2,23 +2,18 @@ import sharp from 'sharp';
 import axios from 'axios';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).send('Method Not Allowed');
-  }
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
   const { pattern_url, rap_url } = req.body;
-  if (!pattern_url || !rap_url) {
-    return res.status(400).send('Missing pattern_url or rap_url');
-  }
+  if (!pattern_url || !rap_url) return res.status(400).send('Missing URLs');
 
   try {
-    // Tải ảnh
     const [patternRes, rapRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Resize ảnh rập trước để tránh tràn RAM
+    // Resize ảnh rập
     const MAX_WIDTH = 2000;
     const rapBuffer = await sharp(rapRes.data)
       .ensureAlpha()
@@ -27,14 +22,13 @@ export default async function handler(req, res) {
 
     const metadata = await sharp(rapBuffer).metadata();
 
-    // Resize pattern tile
+    // Lặp pattern
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // Tạo nền pattern bằng cách lặp tile
     const base = sharp({
       create: {
         width: metadata.width,
@@ -56,29 +50,33 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // ⚠️ Convert ảnh rập thành mask alpha (trắng → trong suốt, đen → giữ lại)
+    // Tạo mask từ ảnh rập (trắng → trong suốt)
     const rapMask = await sharp(rapBuffer)
       .ensureAlpha()
       .removeAlpha()
-      .threshold(200) // biến nền trắng thành trắng tuyệt đối
+      .threshold(200)
       .toColourspace('b-w')
       .toBuffer();
 
-    // Áp mask để chỉ giữ phần pattern nằm trong vùng rập
-    const masked = await sharp(patternFilled)
+    // Áp mask → chỉ giữ phần pattern nằm trong vùng rập
+    const maskedPattern = await sharp(patternFilled)
       .ensureAlpha()
       .composite([
-        {
-          input: rapMask,
-          blend: 'dest-in' // chỉ giữ vùng giao với mask
-        }
+        { input: rapMask, blend: 'dest-in' }
       ])
       .png()
       .toBuffer();
 
-    // Trả về ảnh kết quả
+    // ⚠️ BƯỚC CUỐI: overlay lại đường viền rập (line art) lên trên
+    const finalOutput = await sharp(maskedPattern)
+      .composite([
+        { input: rapBuffer, blend: 'over' }
+      ])
+      .png()
+      .toBuffer();
+
     res.status(200).json({
-      image_base64: masked.toString('base64')
+      image_base64: finalOutput.toString('base64')
     });
 
   } catch (err) {
