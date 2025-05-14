@@ -13,14 +13,14 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Resize ảnh rập để không bị quá tải
+    // Resize ảnh rập
     const MAX_WIDTH = 2000;
-    const rapBuffer = await sharp(rapRes.data)
-      .ensureAlpha()
+    const rapResized = await sharp(rapRes.data)
       .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+      .ensureAlpha()
       .toBuffer();
 
-    const metadata = await sharp(rapBuffer).metadata();
+    const metadata = await sharp(rapResized).metadata();
 
     // Resize tile pattern
     const tileSize = 400;
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       .ensureAlpha()
       .toBuffer();
 
-    // Tạo nền pattern
+    // Fill pattern background
     const base = sharp({
       create: {
         width: metadata.width,
@@ -51,26 +51,19 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // ⚠️ Convert ảnh rập thành ảnh line art trong suốt (đen giữ lại, trắng loại)
-    const rapLineArt = await sharp(rapBuffer)
-      .removeAlpha()
-      .threshold(180)            // giữ line
-      .toColourspace('b-w')
-      .toBuffer();
-
-    const rapAlpha = await sharp(rapLineArt)
-      .ensureAlpha()
-      .png()
-      .toBuffer();
-
-    // ✅ Overlay line art lên pattern
-    const finalOutput = await sharp(patternFilled)
-      .composite([{ input: rapAlpha, blend: 'over' }])
+    // ⚠️ Blend rập lên pattern dùng multiply (giữ viền đen, loại nền trắng)
+    const final = await sharp(patternFilled)
+      .composite([
+        {
+          input: rapResized,
+          blend: 'multiply'
+        }
+      ])
       .png()
       .toBuffer();
 
     res.status(200).json({
-      image_base64: finalOutput.toString('base64')
+      image_base64: final.toString('base64')
     });
 
   } catch (err) {
