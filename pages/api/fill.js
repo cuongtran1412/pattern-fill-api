@@ -12,22 +12,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Tải ảnh pattern và ảnh rập từ Cloudinary
+    // Tải ảnh pattern và rập
     const [patternRes, rapRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
+    // Lấy metadata từ ảnh rập
     const rapImage = sharp(rapRes.data).ensureAlpha();
     const metadata = await rapImage.metadata();
 
-    // Resize pattern nhỏ lại thành ô vuông 200x200
+    // Resize pattern thành tile nhỏ 200x200
     const patternTile = await sharp(patternRes.data)
       .resize(200, 200)
       .ensureAlpha()
       .toBuffer();
 
-    // Tạo nền trắng để lát pattern lên
+    // Tạo nền trắng để lát pattern
     const base = sharp({
       create: {
         width: metadata.width,
@@ -37,7 +38,7 @@ export default async function handler(req, res) {
       }
     });
 
-    // Lặp pattern để phủ kín vùng rập
+    // Lặp tile để phủ kín ảnh rập
     const compositeArray = [];
     for (let y = 0; y < metadata.height; y += 200) {
       for (let x = 0; x < metadata.width; x += 200) {
@@ -45,15 +46,20 @@ export default async function handler(req, res) {
       }
     }
 
-    // Lát pattern lên nền trắng
+    // Lát pattern
     const patternFilled = await base
       .composite(compositeArray)
       .png()
       .toBuffer();
 
-    // Ghép ảnh rập đè lên pattern
+    // ⚠️ FIX lỗi VipsImage: file has been truncated bằng cách convert buffer ảnh rập trước
+    const rapBuffer = await sharp(rapRes.data)
+      .ensureAlpha()
+      .toBuffer();
+
+    // Overlay ảnh rập lên pattern
     const output = await sharp(patternFilled)
-      .composite([{ input: rapRes.data, blend: 'over' }])
+      .composite([{ input: rapBuffer, blend: 'over' }])
       .png()
       .toBuffer();
 
