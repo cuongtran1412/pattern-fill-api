@@ -13,7 +13,7 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Resize ảnh rập
+    // Resize ảnh rập để không bị quá tải
     const MAX_WIDTH = 2000;
     const rapBuffer = await sharp(rapRes.data)
       .ensureAlpha()
@@ -22,13 +22,14 @@ export default async function handler(req, res) {
 
     const metadata = await sharp(rapBuffer).metadata();
 
-    // Lặp pattern
+    // Resize tile pattern
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
+    // Tạo nền pattern
     const base = sharp({
       create: {
         width: metadata.width,
@@ -50,28 +51,21 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // Tạo mask từ ảnh rập (trắng → trong suốt)
-    const rapMask = await sharp(rapBuffer)
-      .ensureAlpha()
+    // ⚠️ Convert ảnh rập thành ảnh line art trong suốt (đen giữ lại, trắng loại)
+    const rapLineArt = await sharp(rapBuffer)
       .removeAlpha()
-      .threshold(200)
+      .threshold(180)            // giữ line
       .toColourspace('b-w')
       .toBuffer();
 
-    // Áp mask → chỉ giữ phần pattern nằm trong vùng rập
-    const maskedPattern = await sharp(patternFilled)
+    const rapAlpha = await sharp(rapLineArt)
       .ensureAlpha()
-      .composite([
-        { input: rapMask, blend: 'dest-in' }
-      ])
       .png()
       .toBuffer();
 
-    // ⚠️ BƯỚC CUỐI: overlay lại đường viền rập (line art) lên trên
-    const finalOutput = await sharp(maskedPattern)
-      .composite([
-        { input: rapBuffer, blend: 'over' }
-      ])
+    // ✅ Overlay line art lên pattern
+    const finalOutput = await sharp(patternFilled)
+      .composite([{ input: rapAlpha, blend: 'over' }])
       .png()
       .toBuffer();
 
