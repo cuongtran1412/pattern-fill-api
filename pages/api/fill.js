@@ -4,31 +4,30 @@ import axios from 'axios';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  const { pattern_url, mask_url, outline_url } = req.body;
-  if (!pattern_url || !mask_url) {
-    return res.status(400).send('Missing pattern_url or mask_url');
+  const { pattern_url, rap_url } = req.body;
+  if (!pattern_url || !rap_url) {
+    return res.status(400).send('Missing pattern_url or rap_url');
   }
 
   try {
-    const [patternRes, maskRes, outlineRes] = await Promise.all([
+    // Tải pattern và rập (mask)
+    const [patternRes, maskRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
-      axios.get(mask_url, { responseType: 'arraybuffer' }),
-      outline_url
-        ? axios.get(outline_url, { responseType: 'arraybuffer' })
-        : Promise.resolve(null)
+      axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Lấy metadata từ mask
+    // Lấy kích thước từ ảnh rập
     const maskImage = await sharp(maskRes.data).ensureAlpha();
     const metadata = await maskImage.metadata();
 
-    // Tạo pattern tiled theo kích thước mask
+    // Resize pattern tile
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
+    // Lặp pattern thành nền đầy đủ
     const base = sharp({
       create: {
         width: metadata.width,
@@ -50,7 +49,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // Áp mask trắng-đen
+    // Áp mask (ảnh rập đen nền, trắng áo) lên pattern
     const masked = await sharp(patternFilled)
       .composite([
         { input: maskRes.data, blend: 'dest-in' }
@@ -58,24 +57,12 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    let final = masked;
-
-    // Nếu có outline → overlay thêm viền rập
-    if (outlineRes) {
-      final = await sharp(masked)
-        .composite([
-          { input: outlineRes.data, blend: 'multiply' }
-        ])
-        .png()
-        .toBuffer();
-    }
-
     res.status(200).json({
-      image_base64: final.toString('base64')
+      image_base64: masked.toString('base64')
     });
 
   } catch (err) {
-    console.error('❌ ERROR:', err);
-    res.status(500).send('Processing error');
+    console.error("❌ ERROR:", err);
+    res.status(500).send('Server error');
   }
 }
