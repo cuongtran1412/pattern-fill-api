@@ -1,13 +1,5 @@
 {
-  "functions": {
-    "api/fill.py": {
-      "runtime": "python3.9"
-    }
-  },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/public/index.html"
-    }
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" }
   ]
 }
