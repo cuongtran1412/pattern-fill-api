@@ -13,8 +13,8 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // Resize ảnh rập
     const MAX_WIDTH = 2000;
+
     const rapResized = await sharp(rapRes.data)
       .resize({ width: MAX_WIDTH, withoutEnlargement: true })
       .ensureAlpha()
@@ -22,14 +22,12 @@ export default async function handler(req, res) {
 
     const metadata = await sharp(rapResized).metadata();
 
-    // Resize tile pattern
     const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // Fill pattern background
     const base = sharp({
       create: {
         width: metadata.width,
@@ -51,19 +49,31 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // ⚠️ Blend rập lên pattern dùng multiply (giữ viền đen, loại nền trắng)
-    const final = await sharp(patternFilled)
+    // 🧠 Tạo mask từ rập (trắng thành trong suốt)
+    const rapMask = await sharp(rapResized)
+      .removeAlpha()
+      .threshold(220) // nền trắng thành trắng tuyệt đối
+      .toColourspace('b-w')
+      .toBuffer();
+
+    // ⚙️ Cắt pattern theo mask
+    const maskedPattern = await sharp(patternFilled)
       .composite([
-        {
-          input: rapResized,
-          blend: 'multiply'
-        }
+        { input: rapMask, blend: 'dest-in' } // giữ lại vùng có mask
+      ])
+      .png()
+      .toBuffer();
+
+    // 💥 Overlay lại rập lên trên (giữ line art)
+    const finalOutput = await sharp(maskedPattern)
+      .composite([
+        { input: rapResized, blend: 'multiply' }
       ])
       .png()
       .toBuffer();
 
     res.status(200).json({
-      image_base64: final.toString('base64')
+      image_base64: finalOutput.toString('base64')
     });
 
   } catch (err) {
