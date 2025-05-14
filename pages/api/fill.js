@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const metadata = await sharp(rapResized).metadata();
 
     // Resize tile pattern
-    const tileSize = 200;
+    const tileSize = 800;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
