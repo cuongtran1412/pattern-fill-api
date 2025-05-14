@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Auto Fill Pattern</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    input, button { width: 100%; padding: 10px; margin: 10px 0; }
+    img { max-width: 100%; margin-top: 20px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h2>Auto Fill Pattern vào Rập</h2>
+
+  <label>Pattern Image URL:</label>
+  <input id="pattern-url" placeholder="https://.../pattern.png"/>
+
+  <label>Rập Áo Image URL:</label>
+  <input id="rap-url" placeholder="https://.../rap.png"/>
+
+  <button onclick="fillPattern()">Fill Pattern</button>
+
+  <div id="result">
+    <h3>Kết quả:</h3>
+    <img id="result-img" src="" alt="Result will appear here"/>
+  </div>
+
+  <script>
+    async function fillPattern() {
+      const patternUrl = document.getElementById("pattern-url").value.trim();
+      const rapUrl = document.getElementById("rap-url").value.trim();
+
+      const res = await fetch("/api/fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern_url: patternUrl,
+          rap_url: rapUrl
+        })
+      });
+
+      const data = await res.json();
+      document.getElementById("result-img").src = "data:image/png;base64," + data.image_base64;
+    }
+  </script>
+</body>
+</html>
