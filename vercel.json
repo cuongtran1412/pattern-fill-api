@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/fill.py": {
+      "runtime": "python3.9"
+    }
+  }
+}
