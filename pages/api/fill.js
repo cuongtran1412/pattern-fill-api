@@ -8,19 +8,44 @@ export default async function handler(req, res) {
   if (!pattern_url || !rap_url) return res.status(400).send('Missing URLs');
 
   try {
+    // Tải ảnh
     const [patternRes, rapRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    const rapImg = sharp(rapRes.data);
-    const metadata = await rapImg.metadata();
+    const rapSharp = sharp(rapRes.data);
+    const metadata = await rapSharp.metadata();
 
-    const patternBuffer = await sharp(patternRes.data)
-      .resize(metadata.width, metadata.height, { fit: 'repeat' })
+    const patternTile = await sharp(patternRes.data)
+      .resize(200, 200)
       .toBuffer();
 
-    const output = await sharp(patternBuffer)
+    // Tạo nền trắng để ghép tile vào
+    const base = sharp({
+      create: {
+        width: metadata.width,
+        height: metadata.height,
+        channels: 3,
+        background: { r: 255, g: 255, b: 255 }
+      }
+    });
+
+    // Lặp tile để fill hết vùng rập
+    const compositeArray = [];
+    for (let y = 0; y < metadata.height; y += 200) {
+      for (let x = 0; x < metadata.width; x += 200) {
+        compositeArray.push({ input: patternTile, top: y, left: x });
+      }
+    }
+
+    const filledPatternBuffer = await base
+      .composite(compositeArray)
+      .png()
+      .toBuffer();
+
+    // Overlay rập lên trên
+    const output = await sharp(filledPatternBuffer)
       .composite([{ input: rapRes.data, blend: 'over' }])
       .png()
       .toBuffer();
