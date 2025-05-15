@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const { width, height } = metadata;
 
     // 3. Resize pattern thành tile 400x400 (tùy chỉnh được)
-    const tileSize = 400;
+    const tileSize = 600;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
