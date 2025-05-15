@@ -8,28 +8,25 @@ export default async function handler(req, res) {
   if (!pattern_url || !rap_url) return res.status(400).send('Missing URLs');
 
   try {
-    // 1. Tải ảnh rập & pattern
+    // 1. Tải ảnh pattern + rập
     const [patternRes, rapRes] = await Promise.all([
       axios.get(pattern_url, { responseType: 'arraybuffer' }),
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // 2. GIỮ NGUYÊN kích thước rập gốc (KHÔNG resize)
-    const rapBuffer = await sharp(rapRes.data)
-      .ensureAlpha()
-      .toBuffer();
+    // 2. Đọc ảnh rập GỐC (không resize)
+    const rapBuffer = await sharp(rapRes.data).ensureAlpha().toBuffer();
+    const rapMeta = await sharp(rapBuffer).metadata();
+    const { width, height, density } = rapMeta;
 
-    const metadata = await sharp(rapBuffer).metadata();
-    const { width, height } = metadata;
-
-    // 3. Resize pattern thành tile 400x400 (tùy chỉnh được)
-    const tileSize = 600;
+    // 3. Resize pattern thành tile (400x400)
+    const tileSize = 400;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // 4. Tạo nền trắng, fill pattern bằng lặp tile
+    // 4. Fill pattern vào nền trắng kích thước bằng rập
     const base = sharp({
       create: {
         width,
@@ -51,25 +48,18 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 5. Tạo MASK: giữ vùng bên trong rập (màu trắng), loại vùng ngoài (đen)
-    const rapGray = await sharp(rapBuffer)
-      .removeAlpha()
-      .greyscale()
-      .toBuffer();
+    // 5. Tạo MASK từ rập: giữ lại phần bên trong
+    const rapGray = await sharp(rapBuffer).removeAlpha().greyscale().toBuffer();
 
     const masked = await sharp(patternFilled)
-      .composite([
-        {
-          input: rapGray,
-          blend: 'dest-in'
-        }
-      ])
+      .composite([{ input: rapGray, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // 6. Overlay lại viền rập (line art đen) lên trên
+    // 6. Overlay lại rập (viền đen) lên pattern
     const final = await sharp(masked)
       .composite([{ input: rapBuffer, blend: 'multiply' }])
+      .withMetadata({ density: density || 300 }) // ⚠️ giữ DPI đúng để khỏi bị scale
       .png()
       .toBuffer();
 
