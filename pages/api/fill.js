@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const { width, height, density } = rapMeta;
 
     // 3. Resize pattern thành tile (400x400)
-    const tileSize = 5500;
+    const tileSize = 3000;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
