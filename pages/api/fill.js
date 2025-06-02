@@ -19,36 +19,42 @@ export default async function handler(req, res) {
     const rapMeta = await sharp(rapBuffer).metadata();
     const { width, height, density } = rapMeta;
 
-    // 3. Resize pattern thành tile (400x400)
-    const tileSize = 1024;
+    // 3. Resize pattern thành tile nhỏ hơn
+    const tileSize = 800;
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // 4. Fill pattern vào nền trắng kích thước bằng rập
-    const base = sharp({
+    // 4. Tính offset để fill từ center (giữa mảnh)
+    const offsetX = Math.floor(width / 2 - tileSize / 2);
+    const offsetY = Math.floor(height / 2 - tileSize / 2);
+
+    const compositeArray = [];
+    for (let y = -tileSize * 2; y < height + tileSize * 2; y += tileSize) {
+      for (let x = -tileSize * 2; x < width + tileSize * 2; x += tileSize) {
+        compositeArray.push({
+          input: patternTile,
+          top: y + offsetY,
+          left: x + offsetX
+        });
+      }
+    }
+
+    // 5. Tạo nền trắng rồi fill pattern
+    const patternFilled = await sharp({
       create: {
         width,
         height,
         channels: 4,
         background: { r: 255, g: 255, b: 255, alpha: 1 }
       }
-    });
-
-    const compositeArray = [];
-    for (let y = 0; y < height; y += tileSize) {
-      for (let x = 0; x < width; x += tileSize) {
-        compositeArray.push({ input: patternTile, top: y, left: x });
-      }
-    }
-
-    const patternFilled = await base
+    })
       .composite(compositeArray)
       .png()
       .toBuffer();
 
-    // 5. Tạo MASK từ rập: giữ lại phần bên trong
+    // 6. Tạo MASK từ rập
     const rapGray = await sharp(rapBuffer).removeAlpha().greyscale().toBuffer();
 
     const masked = await sharp(patternFilled)
@@ -56,14 +62,14 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 6. Overlay lại rập (viền đen) lên pattern
+    // 7. Overlay đường viền rập (blend multiply)
     const final = await sharp(masked)
       .composite([{ input: rapBuffer, blend: 'multiply' }])
-      .withMetadata({ density: density || 300 }) // ⚠️ giữ DPI đúng để khỏi bị scale
+      .withMetadata({ density: density || 300 }) // giữ DPI gốc nếu có
       .png()
       .toBuffer();
 
-    // 7. Trả về base64
+    // 8. Trả về base64
     res.status(200).json({
       image_base64: final.toString('base64')
     });
