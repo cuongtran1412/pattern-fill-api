@@ -24,11 +24,12 @@ export default async function handler(req, res) {
     if (width < 600 || height < 600) tileSize = 800;
     if (width < 400 || height < 400) tileSize = 600;
 
-    // 4. Resize pattern thành tile
-     const zoomRatio = 0.5; // 0.5x nghĩa là pattern gấp đôi kích thước khi fill
-    .resize(Math.round(tileSize * zoomRatio), Math.round(tileSize * zoomRatio))
-    .ensureAlpha()
-    .toBuffer();
+    // 4. Resize pattern nhỏ lại để khi fill nhìn to hơn (zoom effect)
+const zoomRatio = 0.5; // pattern sẽ to gấp đôi
+const patternTile = await sharp(patternRes.data)
+  .resize(Math.round(tileSize * zoomRatio), Math.round(tileSize * zoomRatio))
+  .ensureAlpha()
+  .toBuffer();
 
     // 5. Tính offset để fill từ center
     const offsetX = Math.floor(width / 2 - tileSize / 2);
