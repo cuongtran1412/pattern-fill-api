@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     if (width < 400 || height < 400) tileSize = 600;
 
     // 4. Resize pattern nhỏ lại để khi fill nhìn to hơn (zoom effect)
-const zoomRatio = 0.5; // pattern sẽ to gấp đôi
+const zoomRatio = 2; // pattern sẽ to gấp đôi
 const patternTile = await sharp(patternRes.data)
   .resize(Math.round(tileSize * zoomRatio), Math.round(tileSize * zoomRatio))
   .ensureAlpha()
