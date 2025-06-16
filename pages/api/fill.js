@@ -19,17 +19,19 @@ export default async function handler(req, res) {
     const rapMeta = await sharp(rapBuffer).metadata();
     const { width, height, density } = rapMeta;
 
-    // 3. Tự động tính tileSize tùy theo kích thước mảnh
+    // 3. Tính tileSize tùy theo kích thước mảnh
     let tileSize = 1024;
     if (width < 600 || height < 600) tileSize = 800;
     if (width < 400 || height < 400) tileSize = 600;
 
-    // 4. Resize pattern nhỏ lại để khi fill nhìn to hơn (zoom effect)
-const zoomRatio = 2; // pattern sẽ to gấp đôi
-const patternTile = await sharp(patternRes.data)
-  .resize(Math.round(tileSize * zoomRatio), Math.round(tileSize * zoomRatio))
-  .ensureAlpha()
-  .toBuffer();
+    // 👉 Tăng tileSize để pattern to hơn
+    tileSize = tileSize * 2; // Pattern to gấp đôi
+
+    // 4. Resize pattern thành tile
+    const patternTile = await sharp(patternRes.data)
+      .resize(tileSize, tileSize)
+      .ensureAlpha()
+      .toBuffer();
 
     // 5. Tính offset để fill từ center
     const offsetX = Math.floor(width / 2 - tileSize / 2);
@@ -59,25 +61,26 @@ const patternTile = await sharp(patternRes.data)
       .png()
       .toBuffer();
 
-    // 7. Tạo mask từ kênh alpha để mask chính xác vùng rập
+    // 7. Tạo mask từ kênh alpha của ảnh rập
     const rapAlpha = await sharp(rapBuffer)
       .extractChannel('alpha')
       .toColourspace('b-w')
       .toBuffer();
 
+    // 8. Áp mask vào patternFilled
     const masked = await sharp(patternFilled)
       .composite([{ input: rapAlpha, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // 8. Overlay viền rập trở lại
+    // 9. Overlay viền rập để giữ outline
     const final = await sharp(masked)
       .composite([{ input: rapBuffer, blend: 'multiply' }])
       .withMetadata({ density: density || 300 })
       .png()
       .toBuffer();
 
-    // 9. Trả về base64
+    // 10. Trả về base64
     res.status(200).json({
       image_base64: final.toString('base64'),
     });
