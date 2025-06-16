@@ -14,17 +14,19 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // 2. Đọc ảnh rập GỐC (không resize)
+    // 2. Đọc ảnh rập gốc
     const rapBuffer = await sharp(rapRes.data).ensureAlpha().toBuffer();
     const rapMeta = await sharp(rapBuffer).metadata();
     const { width, height, density } = rapMeta;
 
-    // 3. Tự động tính tileSize tùy theo kích thước mảnh
-    let tileSize = 1024;
-    if (width < 600 || height < 600) tileSize = 800;
-    if (width < 400 || height < 400) tileSize = 600;
+    // 3. Tính tileSize theo tỷ lệ mockup
+    const mockupWidth = 1024;
+    const mockupHeight = 1536;
+    const tileSizeW = Math.round(width / (mockupWidth / 1024));
+    const tileSizeH = Math.round(height / (mockupHeight / 1536));
+    const tileSize = Math.round((tileSizeW + tileSizeH) / 2);
 
-    // 4. Resize pattern thành tile
+    // 4. Resize pattern thành tile vuông
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
@@ -45,7 +47,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Fill pattern vào nền trắng
+    // 6. Fill pattern lên nền trắng
     const patternFilled = await sharp({
       create: {
         width,
@@ -58,7 +60,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 7. Tạo mask từ kênh alpha để mask chính xác vùng rập
+    // 7. Tạo mask từ kênh alpha của rập
     const rapAlpha = await sharp(rapBuffer)
       .extractChannel('alpha')
       .toColourspace('b-w')
@@ -76,7 +78,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 9. Trả về base64
+    // 9. Trả về ảnh base64
     res.status(200).json({
       image_base64: final.toString('base64'),
     });
