@@ -19,21 +19,20 @@ export default async function handler(req, res) {
     const rapMeta = await sharp(rapBuffer).metadata();
     const { width, height, density } = rapMeta;
 
-    // 3. Tính tileSize theo tỷ lệ mockup
+    // 3. Tính tileSize theo mockup gốc 1024x1536
     const mockupWidth = 1024;
     const mockupHeight = 1536;
-
     const tileSizeW = Math.round(width / (mockupWidth / 1024));
     const tileSizeH = Math.round(height / (mockupHeight / 1536));
     const tileSize = Math.round((tileSizeW + tileSizeH) / 2);
 
-    // 4. Resize pattern thành tile vuông
+    // 4. Resize pattern thành tile
     const patternTile = await sharp(patternRes.data)
       .resize(tileSize, tileSize)
       .ensureAlpha()
       .toBuffer();
 
-    // 5. Tính offset để fill từ center
+    // 5. Fill pattern từ center
     const offsetX = Math.floor(width / 2 - tileSize / 2);
     const offsetY = Math.floor(height / 2 - tileSize / 2);
 
@@ -48,7 +47,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Fill pattern lên nền trắng
+    // 6. Fill nền trắng
     const patternFilled = await sharp({
       create: {
         width,
@@ -61,7 +60,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 7. Tạo mask từ kênh alpha của rập
+    // 7. Tạo mask alpha từ rập
     const rapAlpha = await sharp(rapBuffer)
       .extractChannel('alpha')
       .toColourspace('b-w')
@@ -72,8 +71,12 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 8. Overlay lại viền rập sau khi resize cho khớp kích thước
-    const rapResized = await sharp(rapBuffer).resize(width, height).toBuffer();
+    // 8. Resize rapBuffer để overlay lại viền chuẩn
+    const rapResized = await sharp(rapBuffer)
+      .resize(width, height, { fit: 'fill' }) // ép kích thước tuyệt đối
+      .removeAlpha()
+      .ensureAlpha()
+      .toBuffer();
 
     const final = await sharp(masked)
       .composite([{ input: rapResized, blend: 'multiply' }])
@@ -81,7 +84,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 9. Trả về ảnh base64
+    // 9. Trả về kết quả
     res.status(200).json({
       image_base64: final.toString('base64'),
     });
