@@ -14,17 +14,15 @@ export default async function handler(req, res) {
       axios.get(rap_url, { responseType: 'arraybuffer' })
     ]);
 
-    // 2. Đọc ảnh rập gốc
+    // 2. Đọc ảnh rập GỐC (không resize)
     const rapBuffer = await sharp(rapRes.data).ensureAlpha().toBuffer();
     const rapMeta = await sharp(rapBuffer).metadata();
     const { width, height, density } = rapMeta;
 
-    // 3. Tính tileSize theo mockup gốc 1024x1536
-    const mockupWidth = 1024;
-    const mockupHeight = 1536;
-    const tileSizeW = Math.round(width / (mockupWidth / 1024));
-    const tileSizeH = Math.round(height / (mockupHeight / 1536));
-    const tileSize = Math.round((tileSizeW + tileSizeH) / 2);
+    // 3. Tự động tính tileSize tùy theo kích thước mảnh
+    let tileSize = 1024;
+    if (width < 600 || height < 600) tileSize = 800;
+    if (width < 400 || height < 400) tileSize = 600;
 
     // 4. Resize pattern thành tile
     const patternTile = await sharp(patternRes.data)
@@ -32,7 +30,7 @@ export default async function handler(req, res) {
       .ensureAlpha()
       .toBuffer();
 
-    // 5. Fill pattern từ center
+    // 5. Tính offset để fill từ center
     const offsetX = Math.floor(width / 2 - tileSize / 2);
     const offsetY = Math.floor(height / 2 - tileSize / 2);
 
@@ -47,7 +45,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Fill pattern lên nền trắng
+    // 6. Fill pattern vào nền trắng
     const patternFilled = await sharp({
       create: {
         width,
@@ -60,7 +58,7 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 7. Tạo mask alpha từ rập
+    // 7. Tạo mask từ kênh alpha để mask chính xác vùng rập
     const rapAlpha = await sharp(rapBuffer)
       .extractChannel('alpha')
       .toColourspace('b-w')
@@ -71,22 +69,14 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 8. Resize rapBuffer để overlay lại viền đúng theo masked
-    const maskedMeta = await sharp(masked).metadata();
-
-    const rapOverlay = await sharp(rapBuffer)
-      .resize(maskedMeta.width, maskedMeta.height, { fit: 'fill' })
-      .removeAlpha()
-      .ensureAlpha()
-      .toBuffer();
-
+    // 8. Overlay viền rập trở lại
     const final = await sharp(masked)
-      .composite([{ input: rapOverlay, blend: 'multiply' }])
+      .composite([{ input: rapBuffer, blend: 'multiply' }])
       .withMetadata({ density: density || 300 })
       .png()
       .toBuffer();
 
-    // 9. Trả về ảnh base64
+    // 9. Trả về base64
     res.status(200).json({
       image_base64: final.toString('base64'),
     });
