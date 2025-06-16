@@ -22,6 +22,7 @@ export default async function handler(req, res) {
     // 3. Tính tileSize theo tỷ lệ mockup
     const mockupWidth = 1024;
     const mockupHeight = 1536;
+
     const tileSizeW = Math.round(width / (mockupWidth / 1024));
     const tileSizeH = Math.round(height / (mockupHeight / 1536));
     const tileSize = Math.round((tileSizeW + tileSizeH) / 2);
@@ -71,9 +72,11 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 8. Overlay viền rập trở lại
+    // 8. Overlay lại viền rập sau khi resize cho khớp kích thước
+    const rapResized = await sharp(rapBuffer).resize(width, height).toBuffer();
+
     const final = await sharp(masked)
-      .composite([{ input: rapBuffer, blend: 'multiply' }])
+      .composite([{ input: rapResized, blend: 'multiply' }])
       .withMetadata({ density: density || 300 })
       .png()
       .toBuffer();
