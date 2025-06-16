@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Fill nền trắng
+    // 6. Fill pattern lên nền trắng
     const patternFilled = await sharp({
       create: {
         width,
@@ -71,20 +71,22 @@ export default async function handler(req, res) {
       .png()
       .toBuffer();
 
-    // 8. Resize rapBuffer để overlay lại viền chuẩn
-    const rapResized = await sharp(rapBuffer)
-      .resize(width, height, { fit: 'fill' }) // ép kích thước tuyệt đối
+    // 8. Resize rapBuffer để overlay lại viền đúng theo masked
+    const maskedMeta = await sharp(masked).metadata();
+
+    const rapOverlay = await sharp(rapBuffer)
+      .resize(maskedMeta.width, maskedMeta.height, { fit: 'fill' })
       .removeAlpha()
       .ensureAlpha()
       .toBuffer();
 
     const final = await sharp(masked)
-      .composite([{ input: rapResized, blend: 'multiply' }])
+      .composite([{ input: rapOverlay, blend: 'multiply' }])
       .withMetadata({ density: density || 300 })
       .png()
       .toBuffer();
 
-    // 9. Trả về kết quả
+    // 9. Trả về ảnh base64
     res.status(200).json({
       image_base64: final.toString('base64'),
     });
